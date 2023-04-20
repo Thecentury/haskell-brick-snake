@@ -20,7 +20,13 @@ source-repository head
   location:            https://github.com/thecentury/brick-snake.git
 
 common common-options
-  build-depends:       base ^>= 4.16.4.0
+  build-depends:       base ^>= 4.16.4.0,
+                       brick,
+                       containers,
+                       linear,
+                       microlens,
+                       microlens-th,
+                       random
   
   ghc-options:         -Wall
                        -Wcompat
