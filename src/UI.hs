@@ -142,8 +142,8 @@ drawGrid g = withBorderStyle BS.unicodeBold
   $ B.borderWithLabel (str "Snake")
   $ vBox rows
   where
-    rows         = [hBox $ cellsInRow r | r <- [height-1,height-2..0]]
-    cellsInRow y = [drawCoord (V2 x y) | x <- [0..width-1]]
+    rows         = [hBox $ cellsInRow r | r <- [height-1, height-2 .. 0]]
+    cellsInRow y = [drawCoord (V2 x y) | x <- [0 .. width-1]]
     drawCoord    = drawCell . cellAt
     cellAt c
       | c `elem` g ^. snake = Snake
