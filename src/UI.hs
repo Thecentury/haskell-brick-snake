@@ -1,11 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module UI (main) where
 
-import Control.Monad (forever, void)
 import Control.Monad.State.Strict
-import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (threadDelay, forkIO)
-import Data.Maybe (fromMaybe)
 
 import Snake
 
@@ -13,10 +10,8 @@ import Brick
   ( App(..), AttrMap, BrickEvent(..), EventM, Widget
   , customMain, neverShowCursor
   , halt
-  , hLimit, vLimit, vBox, hBox
-  , padRight, padLeft, padTop, padAll, Padding(..)
-  , withBorderStyle
-  , str
+  , hLimit, vBox, hBox  , padRight, padTop, padAll, Padding(..)
+  , withBorderStyle, str
   , attrMap, withAttr, emptyWidget, AttrName, on, fg
   , (<+>), attrName
   )
@@ -26,8 +21,6 @@ import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Center as C
 import Control.Lens ((^.), (&), (.~))
 import qualified Graphics.Vty as V
-import Data.Sequence (Seq)
-import qualified Data.Sequence as S
 import Linear.V2 (V2(..))
 import Control.Concurrent.STM (newTVar, readTVar, writeTVar, atomically)
 
@@ -103,13 +96,13 @@ handleSpeed (+/-) = do
 
 -- | Speed increments = 0.01 gives 100 discrete speed settings
 speedInc :: Float
-speedInc = 0.01
+speedInc = 0.1
 
 validSpeed :: Float -> Float
-validSpeed speed = min 10 (max 0.01 speed)
+validSpeed s = min 40 (max 0.01 s)
 
 speedToInt :: Float -> Int
-speedToInt speed = fromEnum (speed / 0.01) * 100
+speedToInt s = fromEnum (s / 0.01) * 100
 
 -- Drawing
 
@@ -120,8 +113,16 @@ drawUI g =
 drawStats :: Game -> Widget Name
 drawStats g = hLimit 11
   $ vBox [ drawScore (g ^. score)
+         , drawSpeed (g ^. speed)
          , padTop (Pad 2) $ drawGameOver (g ^. dead)
          ]
+
+drawSpeed :: Float -> Widget Name
+drawSpeed s = withBorderStyle BS.unicodeRounded
+  $ B.borderWithLabel (str "Speed")
+  $ C.hCenter
+  $ padAll 1
+  $ str $ show s
 
 drawScore :: Int -> Widget Name
 drawScore n = withBorderStyle BS.unicodeBold

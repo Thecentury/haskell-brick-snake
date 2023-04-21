@@ -91,9 +91,9 @@ nextFood :: State Game ()
 nextFood = do
   (f :| fs) <- use foods
   foods .= fs
-  elem f <$> use snake >>= \case
+  use snake >>= (\case
     True -> nextFood
-    False -> food .= f
+    False -> food .= f) . elem f
 
 -- | Move snake along in a marquee fashion
 move :: Game -> Game
