@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
-module UI where
+module UI (main) where
 
 import Control.Monad (forever, void)
+import Control.Monad.State.Strict
 import Control.Monad.IO.Class (liftIO)
 import Control.Concurrent (threadDelay, forkIO)
 import Data.Maybe (fromMaybe)
@@ -9,91 +10,86 @@ import Data.Maybe (fromMaybe)
 import Snake
 
 import Brick
-  (App(..), AttrMap, BrickEvent(..), EventM, Next, Widget,
-  customMain, neverShowCursor,
-  continue, halt,
-  hLimit, vLimit, vBox, hBox,
-  padRight, padLeft, padTop, padAll, Padding(..),
-  withBorderStyle,
-  str,
-  attrMap, withAttr, emptyWidget, AttrName, on, fg,
-  (<+>))
+  ( App(..), AttrMap, BrickEvent(..), EventM, Widget
+  , customMain, neverShowCursor
+  , halt
+  , hLimit, vLimit, vBox, hBox
+  , padRight, padLeft, padTop, padAll, Padding(..)
+  , withBorderStyle
+  , str
+  , attrMap, withAttr, emptyWidget, AttrName, on, fg
+  , (<+>), attrName
+  )
 import Brick.BChan (newBChan, writeBChan)
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Center as C
+import Control.Lens ((^.))
 import qualified Graphics.Vty as V
 import Data.Sequence (Seq)
 import qualified Data.Sequence as S
 import Linear.V2 (V2(..))
-import Lens.Micro ((^.))
 
+-- Types
+
+-- | Ticks mark passing of time
+--
+-- This is our custom event that will be constantly fed into the app.
 data Tick = Tick
 
+-- | Named resources
+--
+-- Not currently used, but will be easier to refactor
+-- if we call this "Name" now.
 type Name = ()
 
 data Cell = Snake | Food | Empty
 
+-- App definition
+
 app :: App Game Tick Name
-app = App
-  { appDraw = drawUI
-  , appChooseCursor = neverShowCursor
-  , appHandleEvent = handleEvent
-  , appStartEvent = return
-  , appAttrMap = const theMap
-  }
+app = App { appDraw = drawUI
+          , appChooseCursor = neverShowCursor
+          , appHandleEvent = handleEvent
+          , appStartEvent = return ()
+          , appAttrMap = const theMap
+          }
 
 main :: IO ()
 main = do
   chan <- newBChan 10
-  tv <- atomically $ newTVar (spToInt initialSpped)
-  forkIO $ forever $ do
+  _ <- forkIO $ forever $ do
     writeBChan chan Tick
-    int <- atomically $ readTVar tv
-    threadDelay int
-  customMain (V.mkVty V.defaultConfig) (Just chan) app (initialGame tv)
-    >>= printResult
+    threadDelay 100000 -- decides how fast your game moves
+  g <- initGame
+  let builder = V.mkVty V.defaultConfig
+  initialVty <- builder
+  void $ customMain initialVty builder (Just chan) app g
 
-handleEvent :: Game -> BrickEvent Name Tick -> EventM Name (Next Game)
-handleEvent g (AppEvent Tick)                         = continue $ step g
-handleEvent g (VtyEvent (V.EvKey V.KUp []))           = continue $ turn North g
-handleEvent g (VtyEvent (V.EvKey V.KDown []))         = continue $ turn South g
-handleEvent g (VtyEvent (V.EvKey V.KRight []))        = continue $ turn East g
-handleEvent g (VtyEvent (V.EvKey V.KLeft []))         = continue $ turn West g
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'k') []))   = continue $ turn North g
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'j') []))   = continue $ turn South g
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'l') []))   = continue $ turn East g
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'h') []))   = continue $ turn West g
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'r') []))   = liftIO initGame >>= continue
-handleEvent g (VtyEvent (V.EvKey (V.KChar 'q') []))   = halt g
-handleEvent g (VtyEvent (V.EvKey V.KEsc []))          = halt g
-handleEvent g (VtyEvent (V.EvKey V.KRight [V.MCtrl])) = handleSpeed g (+)
-handleEvent g (VtyEvent (V.EvKey V.KLeft [V.MCtrl]))  = handleSpeed g (-)
-handleEvent g _                                       = continue g
+-- Handling events
 
-handleSpeed :: Game -> (Float -> Float -> Float) -> EventM n (Next Game)
-handleSpeed g (+/-) = do
-  let newSp = validS $ (g ^. speed) +/- speedInc
-  liftIO $ atomically $ writeTVar (g ^. interval) (spToInt newSp)
-  continue $ g & speed .~ newSp
+handleEvent :: BrickEvent Name Tick -> EventM Name Game ()
+handleEvent (AppEvent Tick)                       = modify step
+handleEvent (VtyEvent (V.EvKey V.KUp []))         = modify $ turn North
+handleEvent (VtyEvent (V.EvKey V.KDown []))       = modify $ turn South
+handleEvent (VtyEvent (V.EvKey V.KRight []))      = modify $ turn East
+handleEvent (VtyEvent (V.EvKey V.KLeft []))       = modify $ turn West
+handleEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = modify $ turn North
+handleEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = modify $ turn South
+handleEvent (VtyEvent (V.EvKey (V.KChar 'l') [])) = modify $ turn East
+handleEvent (VtyEvent (V.EvKey (V.KChar 'h') [])) = modify $ turn West
+handleEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = liftIO initGame >>= put
+handleEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
+handleEvent (VtyEvent (V.EvKey V.KEsc []))        = halt
+handleEvent _                                     = return ()
 
-speedInc :: Float
-speedInc = 0.01
-
-data Game = Game
-  { _board :: Board,
-    _time :: Int,
-    _paused :: Bool,
-    _speed :: Float,
-    _interval :: TVar Int,
-    _focus :: F.FocusRing Name,
-    _selected :: Cell }
+-- Drawing
 
 drawUI :: Game -> [Widget Name]
 drawUI g =
-  [ C.center $ padRight (Pad 2) (drawStats g) <+> drawGrid g]
+  [ C.center $ padRight (Pad 2) (drawStats g) <+> drawGrid g ]
 
-drawStats :: Game -> Windget Name
+drawStats :: Game -> Widget Name
 drawStats g = hLimit 11
   $ vBox [ drawScore (g ^. score)
          , padTop (Pad 2) $ drawGameOver (g ^. dead)
@@ -109,21 +105,18 @@ drawScore n = withBorderStyle BS.unicodeBold
 drawGameOver :: Bool -> Widget Name
 drawGameOver dead =
   if dead
-    then withAttr gameOverAttr $ C.hCenter $ str "GAME OVER"
-    else emptyWidget
-
-gameOverAttr :: AttrName
-gameOverAttr = "gameOver"
+     then withAttr gameOverAttr $ C.hCenter $ str "GAME OVER"
+     else emptyWidget
 
 drawGrid :: Game -> Widget Name
 drawGrid g = withBorderStyle BS.unicodeBold
   $ B.borderWithLabel (str "Snake")
   $ vBox rows
   where
-    rows = [hBox $ cellsInRow r | r <- [height - 1, height - 2..0]]
+    rows         = [hBox $ cellsInRow r | r <- [height-1,height-2..0]]
     cellsInRow y = [drawCoord (V2 x y) | x <- [0..width-1]]
-    drawCoord = drawCell . cellAt
-    cellAt c =
+    drawCoord    = drawCell . cellAt
+    cellAt c
       | c `elem` g ^. snake = Snake
       | c == g ^. food      = Food
       | otherwise           = Empty
@@ -136,14 +129,17 @@ drawCell Empty = withAttr emptyAttr cw
 cw :: Widget Name
 cw = str "  "
 
-snakeAttr, foodAttr, emptyAttr :: AttrName
-snakeAttr = "snakeAttr"
-foodAttr = "foodAttr"
-emptyAttr = "emptyAttr"
-
 theMap :: AttrMap
 theMap = attrMap V.defAttr
-  [ (snakeAttr, V.blue `on` V.blue),
-    (foodAttr, V.red `on` V.red),
-    (gameOverAttr, fg V.red `V.withStyle` V.bold)
+  [ (snakeAttr, V.blue `on` V.blue)
+  , (foodAttr, V.red `on` V.red)
+  , (gameOverAttr, fg V.red `V.withStyle` V.bold)
   ]
+
+gameOverAttr :: AttrName
+gameOverAttr = attrName "gameOver"
+
+snakeAttr, foodAttr, emptyAttr :: AttrName
+snakeAttr = attrName "snakeAttr"
+foodAttr = attrName "foodAttr"
+emptyAttr = attrName "emptyAttr"

@@ -1,0 +1,62 @@
+cabal-version:       1.12
+name:                brick-snake
+version:             0.0.0.0
+synopsis:            See README for more info
+description:         See README for more info
+homepage:            https://github.com/thecentury/brick-snake
+bug-reports:         https://github.com/thecentury/brick-snake/issues
+license:             MIT
+license-file:        LICENSE
+author:              Mikhail Brinchuk
+maintainer:          Mikhail Brinchuk <thecentury@gmail.com>
+copyright:           2023 Mikhail Brinchuk
+build-type:          Simple
+extra-doc-files:     README.md
+                     CHANGELOG.md
+--tested-with:         GHC == 9.6.1
+
+source-repository head
+  type:                git
+  location:            https://github.com/thecentury/brick-snake.git
+
+library
+  other-modules:       Paths_brick_snake
+  hs-source-dirs:      src
+--  import:              common-options
+  build-depends:       base >=4.7 && <5,
+                       brick,
+                       containers,
+                       extra,
+                       linear,
+                       lens,
+                       random,
+                       transformers,
+                       vty,
+                       mtl
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  default-language: Haskell2010
+
+executable brick-snake-exe
+  other-modules:       Paths_brick_snake
+--  import:              common-options
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  build-depends:       brick-snake
+  build-depends:       base >=4.7 && <5,
+                       brick,
+                       brick-snake,
+                       containers,
+                       extra,
+                       linear,
+                       lens,
+                       random,
+                       transformers,
+                       vty,
+                       mtl
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  default-language: Haskell2010
+
+--  ghc-options:         -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+--  ghc-options:         -threaded
+--                       -rtsopts
+--                       -with-rtsopts=-N
