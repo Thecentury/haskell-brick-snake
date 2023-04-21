@@ -8,7 +8,7 @@ module Snake
   , Game(..)
   , Direction(..)
   , dead, food, score, snake
-  , height, width
+  , height, width, speed, interval
   ) where
 
 import Control.Applicative ((<|>))
@@ -22,6 +22,7 @@ import Data.Sequence (Seq(..), (<|))
 import qualified Data.Sequence as S
 import Linear.V2 (V2(..), _x, _y)
 import System.Random (Random(..), newStdGen)
+import Control.Concurrent.STM (TVar)
 
 data Game = Game
   { _snake  :: Snake        -- ^ snake as a sequence of points in N2
@@ -32,7 +33,9 @@ data Game = Game
   , _paused :: Bool         -- ^ paused flag
   , _score  :: Int          -- ^ score
   , _locked :: Bool         -- ^ lock to disallow duplicate turns between time steps
-  } deriving stock (Show)
+  , _speed  :: Float
+  , _interval :: TVar Int
+  }
 
 type Coord = V2 Int
 type Snake = Seq Coord
@@ -120,10 +123,9 @@ turnDir n c | c `elem` [North, South] && n `elem` [East, West] = n
             | otherwise = c
 
 -- | Initialize a paused game with random food location
-initGame :: IO Game
-initGame = do
-  (f :| fs) <-
-    fromList . randomRs (V2 0 0, V2 (width - 1) (height - 1)) <$> newStdGen
+initGame :: TVar Int -> IO Game
+initGame intervalVar = do
+  (f :| fs) <- fromList . randomRs (V2 0 0, V2 (width - 1) (height - 1)) <$> newStdGen
   let xm = width `div` 2
       ym = height `div` 2
       g  = Game
@@ -135,6 +137,8 @@ initGame = do
         , _dead   = False
         , _paused = True
         , _locked = False
+        , _speed = 10
+        , _interval = intervalVar
         }
   return $ execState nextFood g
 

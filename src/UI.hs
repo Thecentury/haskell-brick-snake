@@ -24,11 +24,12 @@ import Brick.BChan (newBChan, writeBChan)
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Center as C
-import Control.Lens ((^.))
+import Control.Lens ((^.), (&), (.~))
 import qualified Graphics.Vty as V
 import Data.Sequence (Seq)
 import qualified Data.Sequence as S
 import Linear.V2 (V2(..))
+import Control.Concurrent.STM (newTVar, readTVar, writeTVar, atomically)
 
 -- Types
 
@@ -55,33 +56,60 @@ app = App { appDraw = drawUI
           , appAttrMap = const theMap
           }
 
+initialDelay :: Int
+initialDelay = 100000
+
 main :: IO ()
 main = do
   chan <- newBChan 10
+  intervalVar <- atomically $ newTVar initialDelay
   _ <- forkIO $ forever $ do
     writeBChan chan Tick
-    threadDelay 100000 -- decides how fast your game moves
-  g <- initGame
+    delay <- atomically $ readTVar intervalVar
+    threadDelay delay -- decides how fast your game moves
+  game <- initGame intervalVar
   let builder = V.mkVty V.defaultConfig
   initialVty <- builder
-  void $ customMain initialVty builder (Just chan) app g
+  void $ customMain initialVty builder (Just chan) app game
 
 -- Handling events
 
 handleEvent :: BrickEvent Name Tick -> EventM Name Game ()
-handleEvent (AppEvent Tick)                       = modify step
-handleEvent (VtyEvent (V.EvKey V.KUp []))         = modify $ turn North
-handleEvent (VtyEvent (V.EvKey V.KDown []))       = modify $ turn South
-handleEvent (VtyEvent (V.EvKey V.KRight []))      = modify $ turn East
-handleEvent (VtyEvent (V.EvKey V.KLeft []))       = modify $ turn West
-handleEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = modify $ turn North
-handleEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = modify $ turn South
-handleEvent (VtyEvent (V.EvKey (V.KChar 'l') [])) = modify $ turn East
-handleEvent (VtyEvent (V.EvKey (V.KChar 'h') [])) = modify $ turn West
-handleEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = liftIO initGame >>= put
-handleEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
-handleEvent (VtyEvent (V.EvKey V.KEsc []))        = halt
-handleEvent _                                     = return ()
+handleEvent (AppEvent Tick)                         = modify step
+handleEvent (VtyEvent (V.EvKey V.KRight [V.MCtrl])) = handleSpeed (+)
+handleEvent (VtyEvent (V.EvKey V.KLeft [V.MCtrl]))  = handleSpeed (-)
+handleEvent (VtyEvent (V.EvKey V.KUp []))           = modify $ turn North
+handleEvent (VtyEvent (V.EvKey V.KDown []))         = modify $ turn South
+handleEvent (VtyEvent (V.EvKey V.KRight []))        = modify $ turn East
+handleEvent (VtyEvent (V.EvKey V.KLeft []))         = modify $ turn West
+handleEvent (VtyEvent (V.EvKey (V.KChar 'k') []))   = modify $ turn North
+handleEvent (VtyEvent (V.EvKey (V.KChar 'j') []))   = modify $ turn South
+handleEvent (VtyEvent (V.EvKey (V.KChar 'l') []))   = modify $ turn East
+handleEvent (VtyEvent (V.EvKey (V.KChar 'h') []))   = modify $ turn West
+handleEvent (VtyEvent (V.EvKey (V.KChar 'r') []))   = do
+  game <- get
+  newGame <- liftIO (initGame $ game ^. interval)
+  put newGame
+handleEvent (VtyEvent (V.EvKey (V.KChar 'q') []))   = halt
+handleEvent (VtyEvent (V.EvKey V.KEsc []))          = halt
+handleEvent _                                       = return ()
+
+handleSpeed :: (Float -> Float -> Float) -> EventM Name Game ()
+handleSpeed (+/-) = do
+  g <- get
+  let newSpeed = validSpeed $ (g ^. speed) +/- speedInc
+  _ <- liftIO $ atomically $ writeTVar (g ^. interval) (speedToInt newSpeed)
+  put $ g & speed .~ newSpeed
+
+-- | Speed increments = 0.01 gives 100 discrete speed settings
+speedInc :: Float
+speedInc = 0.01
+
+validSpeed :: Float -> Float
+validSpeed speed = min 10 (max 0.01 speed)
+
+speedToInt :: Float -> Int
+speedToInt speed = fromEnum (speed / 0.01) * 100
 
 -- Drawing
 
@@ -103,8 +131,8 @@ drawScore n = withBorderStyle BS.unicodeBold
   $ str $ show n
 
 drawGameOver :: Bool -> Widget Name
-drawGameOver dead =
-  if dead
+drawGameOver isDead =
+  if isDead
      then withAttr gameOverAttr $ C.hCenter $ str "GAME OVER"
      else emptyWidget
 
